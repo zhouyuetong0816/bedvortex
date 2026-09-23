@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BedVortex · 梦境深处</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+  body {
+    color: #eef5ff; background:
+      radial-gradient(circle at 50% 72%, rgba(37,81,151,.38), transparent 34%),
+      radial-gradient(circle at 18% 18%, rgba(47,79,155,.24), transparent 30%),
+      linear-gradient(#020715, #06142f 58%, #0a1e42);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+  .veil { position: fixed; inset: 0; pointer-events: none; background: linear-gradient(transparent 55%, rgba(5,19,45,.26)); }
+  header { position: fixed; inset: 22px 26px auto; z-index: 2; display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; pointer-events: none; }
+  h1 { margin: 0; font: 500 clamp(21px,3vw,38px)/1.1 system-ui,sans-serif; letter-spacing: -.04em; }
+  h1 span { display: block; margin-top: 7px; color: rgba(211,228,255,.6); font: 11px/1.4 ui-monospace,monospace; letter-spacing: .2em; text-transform: uppercase; }
+  .wish { color: rgba(220,234,255,.72); font-size: 12px; letter-spacing: .08em; }
+  .hint { position: fixed; z-index: 2; left: 50%; bottom: 28px; transform: translateX(-50%); color: rgba(224,237,255,.7); font-size: 12px; white-space: nowrap; pointer-events: none; text-shadow: 0 2px 12px #000; }
+  .back { position: fixed; z-index: 3; left: 26px; bottom: 24px; color: #eaf2ff; text-decoration: none; font-size: 12px; padding: 9px 14px; border: 1px solid rgba(206,225,255,.28); border-radius: 999px; background: rgba(3,10,27,.28); backdrop-filter: blur(9px); }
+  .back:hover, .back:focus-visible { background: rgba(91,135,214,.25); border-color: rgba(222,235,255,.65); outline: none; }
+  .arrival { position: fixed; inset: 0; z-index: 5; pointer-events: none; background: #020718; animation: arrive 1.8s ease-out forwards; }
+  @keyframes arrive { to { opacity: 0; } }
+  @media (max-width: 600px) { header { inset: 18px; } .back { left: 18px; bottom: 18px; } .hint { bottom: 70px; } }
+  @media (prefers-reduced-motion: reduce) { .arrival { animation-duration: .3s; } }
+</style>
+</head>
+<body>
+<canvas id="stars" aria-label="深蓝色闪烁星空，流星会随机划过"></canvas>
+<div class="veil"></div>
+<header><h1>梦境深处<span>Beyond the vortex</span></h1><div class="wish">愿望 <span id="wishCount">0</span></div></header>
+<div class="hint">移动视角 · 点击星空召唤流星</div>
+<a class="back" href="index.html">← 返回漩涡</a>
+<div class="arrival"></div>
+<script>
+const canvas = document.getElementById('stars');
+const ctx = canvas.getContext('2d');
+const wishCount = document.getElementById('wishCount');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let width = 1, height = 1, dpr = 1, last = performance.now(), nextMeteor = 1.4, wishes = 0;
+let pointerX = 0, pointerY = 0, targetX = 0, targetY = 0;
+const stars = [], meteors = [];
+
+function resize() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  width = innerWidth; height = innerHeight;
+  canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
+  canvas.style.width = width + 'px'; canvas.style.height = height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const count = Math.min(520, Math.round(width * height / 3100));
+  stars.length = 0;
+  for (let i = 0; i < count; i++) stars.push({
+    x: Math.random(), y: Math.random(), r: .35 + Math.random() * 1.35,
+    alpha: .25 + Math.random() * .7, phase: Math.random() * Math.PI * 2,
+    speed: .45 + Math.random() * 1.7, depth: .2 + Math.random() * .8,
+    blue: Math.random() < .24
+  });
+}
+
+function summon(x = Math.random() * width * .65, y = Math.random() * height * .42) {
+  const angle = .42 + Math.random() * .22;
+  const speed = 650 + Math.random() * 450;
+  meteors.push({ x: x - 120, y: y - 60, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0, max: .72 + Math.random() * .42, length: 90 + Math.random() * 150 });
+}
+
+function draw(now) {
+  const dt = Math.min(.04, (now - last) / 1000); last = now;
+  pointerX += (targetX - pointerX) * (1 - Math.exp(-dt * 2.6));
+  pointerY += (targetY - pointerY) * (1 - Math.exp(-dt * 2.6));
+  ctx.clearRect(0, 0, width, height);
+  for (const s of stars) {
+    const twinkle = reduced ? 1 : .62 + .38 * Math.sin(now * .001 * s.speed + s.phase);
+    const x = s.x * width + pointerX * s.depth * 18;
+    const y = s.y * height + pointerY * s.depth * 12;
+    ctx.beginPath(); ctx.arc(x, y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = s.blue ? `rgba(151,199,255,${s.alpha * twinkle})` : `rgba(244,248,255,${s.alpha * twinkle})`;
+    ctx.shadowColor = s.blue ? '#77aefc' : '#e9f3ff'; ctx.shadowBlur = s.r > 1.2 ? 8 : 2; ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+  for (let i = meteors.length - 1; i >= 0; i--) {
+    const m = meteors[i]; m.life += dt; m.x += m.vx * dt; m.y += m.vy * dt;
+    const alpha = Math.sin(Math.min(1, m.life / m.max) * Math.PI);
+    const lenScale = m.length / Math.hypot(m.vx, m.vy);
+    const grad = ctx.createLinearGradient(m.x, m.y, m.x - m.vx * lenScale, m.y - m.vy * lenScale);
+    grad.addColorStop(0, `rgba(255,255,255,${alpha})`); grad.addColorStop(.16, `rgba(163,205,255,${alpha * .8})`); grad.addColorStop(1, 'rgba(83,130,216,0)');
+    ctx.strokeStyle = grad; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - m.vx * lenScale, m.y - m.vy * lenScale); ctx.stroke();
+    if (m.life > m.max) meteors.splice(i, 1);
+  }
+  if (!reduced) {
+    nextMeteor -= dt;
+    if (nextMeteor <= 0) { summon(); nextMeteor = 2.8 + Math.random() * 5.5; }
+  }
+  requestAnimationFrame(draw);
+}
+
+addEventListener('resize', resize);
+canvas.addEventListener('pointermove', e => { targetX = e.clientX / width - .5; targetY = e.clientY / height - .5; });
+canvas.addEventListener('pointerleave', () => { targetX = targetY = 0; });
+canvas.addEventListener('pointerdown', e => { summon(e.clientX, e.clientY); wishes++; wishCount.textContent = wishes; });
+resize();
+if (reduced) { summon(width * .32, height * .25); }
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
