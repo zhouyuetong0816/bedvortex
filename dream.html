@@ -23,6 +23,14 @@
   .hint { position: fixed; z-index: 2; left: 50%; bottom: 28px; transform: translateX(-50%); color: rgba(224,237,255,.7); font-size: 12px; white-space: nowrap; pointer-events: none; text-shadow: 0 2px 12px #000; }
   .back { position: fixed; z-index: 3; left: 26px; bottom: 24px; color: #eaf2ff; text-decoration: none; font-size: 12px; padding: 9px 14px; border: 1px solid rgba(206,225,255,.28); border-radius: 999px; background: rgba(3,10,27,.28); backdrop-filter: blur(9px); }
   .back:hover, .back:focus-visible { background: rgba(91,135,214,.25); border-color: rgba(222,235,255,.65); outline: none; }
+  .ending { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; padding: 24px; text-align: center; background: rgba(2,7,21,.68); backdrop-filter: blur(10px); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 1.2s ease, visibility 1.2s; }
+  .ending.show { opacity: 1; visibility: visible; pointer-events: auto; }
+  .ending-card { max-width: 620px; padding: 34px 30px; }
+  .ending h2 { margin: 0 0 14px; font: 500 clamp(28px,5vw,54px)/1.15 system-ui,sans-serif; letter-spacing: -.04em; }
+  .ending p { margin: 0 auto 27px; color: rgba(222,235,255,.76); font-size: clamp(13px,1.6vw,17px); line-height: 1.8; }
+  .ending-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+  .ending-actions button, .ending-actions a { appearance: none; min-width: 128px; padding: 11px 18px; border: 1px solid rgba(206,225,255,.34); border-radius: 999px; color: #eff6ff; background: rgba(85,129,205,.2); font: 12px ui-monospace,monospace; text-decoration: none; cursor: pointer; }
+  .ending-actions button:hover, .ending-actions a:hover { background: rgba(113,158,235,.36); border-color: rgba(230,240,255,.7); }
   .arrival { position: fixed; inset: 0; z-index: 5; pointer-events: none; background: #020718; animation: arrive 1.8s ease-out forwards; }
   @keyframes arrive { to { opacity: 0; } }
   @media (max-width: 600px) { header { inset: 18px; } .back { left: 18px; bottom: 18px; } .hint { bottom: 70px; } }
@@ -32,21 +40,32 @@
 <body>
 <canvas id="stars" aria-label="深蓝色闪烁星空，许多像素小羊在画面中自由跳跃，点击或拖动可以召唤新的小羊"></canvas>
 <div class="veil"></div>
-<header><h1>梦境深处<span>Beyond the vortex</span></h1><div class="wish">小羊 <span id="sheepTotal">18</span></div></header>
-<div class="hint">移动视角 · 点击召唤小羊 · 按住拖动连续产生羊群</div>
+<header><h1>梦境深处<span>Beyond the vortex</span></h1><div class="wish">困意 <span id="sleepiness">0%</span></div></header>
+<div class="hint" id="hint">召唤 30 只小羊 · 点击或按住拖动</div>
 <a class="back" href="index.html">← 返回漩涡</a>
 <div class="arrival"></div>
+<div class="ending" id="ending" aria-hidden="true">
+  <div class="ending-card">
+    <h2>中文的梦，要数水饺。</h2>
+    <p>Sheep 和 sleep 很像，睡觉和水饺也很像。<br>数着数着，你已经坠入最深的梦。</p>
+    <div class="ending-actions"><button id="dreamAgain" type="button">再做一个梦</button><a href="index.html">醒来</a></div>
+  </div>
+</div>
 <script>
 const canvas = document.getElementById('stars');
 const ctx = canvas.getContext('2d');
-const sheepTotal = document.getElementById('sheepTotal');
+const sleepiness = document.getElementById('sleepiness');
+const hint = document.getElementById('hint');
+const ending = document.getElementById('ending');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let width = 1, height = 1, dpr = 1, last = performance.now(), nextMeteor = 1.4;
 let pointerX = 0, pointerY = 0, targetX = 0, targetY = 0;
 let drawingSheep = false, lastSpawnAt = 0, lastSpawnX = 0, lastSpawnY = 0;
+let summonedCount = 0, endingStartedAt = 0, endingShown = false;
 const movementSpeedMultiplier = 2.4;
 const animationSpeedMultiplier = 1.6;
 const sheepSizeMultiplier = 2;
+const sleepGoal = 30;
 const stars = [], meteors = [], flock = [];
 const sheepImage = new Image();
 sheepImage.src = 'sheep.png';
@@ -94,7 +113,46 @@ function paintSheep(x, y, scale, facing, frame, alpha = 1, glow = 12) {
   ctx.restore();
 }
 
+function paintDumpling(x, y, scale, facing, alpha = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(facing * scale, scale);
+  ctx.globalAlpha = alpha;
+  ctx.shadowColor = 'rgba(135,187,255,.82)';
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  ctx.moveTo(-18, 2);
+  ctx.bezierCurveTo(-15, -13, 15, -13, 18, 2);
+  ctx.bezierCurveTo(13, 15, -13, 15, -18, 2);
+  ctx.closePath();
+  ctx.fillStyle = '#fff7df';
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#17233e';
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  ctx.beginPath();
+  for (let i = -10; i <= 10; i += 5) {
+    ctx.moveTo(i, -7 + Math.abs(i) * .12);
+    ctx.quadraticCurveTo(i * .72, -2, i * .62, 2);
+  }
+  ctx.strokeStyle = 'rgba(54,71,105,.72)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function beginEnding() {
+  if (endingStartedAt) return;
+  endingStartedAt = performance.now();
+  drawingSheep = false;
+  sleepiness.textContent = '100%';
+  hint.textContent = '羊群正在变成水饺…';
+  spawnMeteor(width * .2, height * .16);
+}
+
 function spawnSheep(x, y, settled = false) {
+  if (!settled && endingStartedAt) return;
   const angle = Math.random() * Math.PI * 2;
   flock.push({
     x, y,
@@ -108,23 +166,29 @@ function spawnSheep(x, y, settled = false) {
     born: performance.now() - (settled ? 1000 : 0)
   });
   if (flock.length > 75) flock.shift();
-  sheepTotal.textContent = flock.length;
+  if (!settled) {
+    summonedCount++;
+    sleepiness.textContent = Math.min(100, Math.round(summonedCount / sleepGoal * 100)) + '%';
+    if (summonedCount >= sleepGoal) beginEnding();
+  }
 }
 
 function updateAndDrawSheep(now, dt) {
   if (!sheepImage.complete || !sheepImage.naturalWidth) return;
+  const endingProgress = endingStartedAt ? Math.min(1, (now - endingStartedAt) / 2600) : 0;
+  const worldSpeed = movementSpeedMultiplier * (1 - endingProgress * .9);
   for (const sheep of flock) {
     if (!reduced) {
-      sheep.turnIn -= dt * movementSpeedMultiplier;
+      sheep.turnIn -= dt * worldSpeed;
       if (sheep.turnIn <= 0) {
         sheep.targetAngle += (Math.random() - .5) * 2.8;
         sheep.speed = 32 + Math.random() * 55;
         sheep.turnIn = .3 + Math.random() * 1.65;
       }
       const turn = Math.atan2(Math.sin(sheep.targetAngle - sheep.angle), Math.cos(sheep.targetAngle - sheep.angle));
-      sheep.angle += turn * Math.min(1, dt * 2.4 * Math.sqrt(movementSpeedMultiplier));
-      sheep.x += Math.cos(sheep.angle) * sheep.speed * dt * movementSpeedMultiplier;
-      sheep.y += Math.sin(sheep.angle) * sheep.speed * .62 * dt * movementSpeedMultiplier;
+      sheep.angle += turn * Math.min(1, dt * 2.4 * Math.sqrt(worldSpeed));
+      sheep.x += Math.cos(sheep.angle) * sheep.speed * dt * worldSpeed;
+      sheep.y += Math.sin(sheep.angle) * sheep.speed * .62 * dt * worldSpeed;
       const marginX = 42, top = 56, bottom = 38;
       if (sheep.x < marginX || sheep.x > width - marginX) {
         sheep.x = Math.max(marginX, Math.min(width - marginX, sheep.x));
@@ -143,12 +207,15 @@ function updateAndDrawSheep(now, dt) {
     const appear = Math.min(1, age / .2);
     const pop = 1 + Math.sin(appear * Math.PI) * .3;
     const depth = Math.max(0, Math.min(1, sheep.y / height));
-    const hop = reduced ? 0 : Math.abs(Math.sin(age * sheep.hopSpeed * animationSpeedMultiplier + sheep.phase)) * (12 + depth * 14);
+    const hop = reduced ? 0 : Math.abs(Math.sin(age * sheep.hopSpeed * animationSpeedMultiplier + sheep.phase)) * (12 + depth * 14) * (1 - endingProgress);
     const responsive = Math.max(.7, Math.min(1.15, Math.min(width / 1100, height / 680)));
     const scale = responsive * sheep.size * sheepSizeMultiplier * (1.65 + depth * .85) * appear * pop;
     const facing = Math.cos(sheep.angle) >= 0 ? 1 : -1;
     const frame = Math.floor(now * .012 * animationSpeedMultiplier + sheep.phase * 1.8) % 6;
-    paintSheep(sheep.x + pointerX * 8 * depth, sheep.y - hop + pointerY * 5 * depth, scale, facing, frame, appear, 9 + depth * 10);
+    const drawX = sheep.x + pointerX * 8 * depth;
+    const drawY = sheep.y - hop + pointerY * 5 * depth;
+    if (endingProgress < 1) paintSheep(drawX, drawY, scale, facing, frame, appear * (1 - endingProgress), 9 + depth * 10);
+    if (endingProgress > 0) paintDumpling(drawX, drawY, scale * .92, facing, appear * endingProgress);
   }
   ctx.imageSmoothingEnabled = true;
   ctx.globalAlpha = 1;
@@ -170,6 +237,12 @@ function draw(now) {
   }
   ctx.shadowBlur = 0;
   updateAndDrawSheep(now, dt);
+  if (endingStartedAt && !endingShown && now - endingStartedAt > 3200) {
+    endingShown = true;
+    ending.classList.add('show');
+    ending.setAttribute('aria-hidden', 'false');
+    hint.textContent = '';
+  }
   for (let i = meteors.length - 1; i >= 0; i--) {
     const m = meteors[i]; m.life += dt; m.x += m.vx * dt; m.y += m.vy * dt;
     const alpha = Math.sin(Math.min(1, m.life / m.max) * Math.PI);
@@ -200,6 +273,7 @@ canvas.addEventListener('pointermove', e => {
 });
 canvas.addEventListener('pointerleave', () => { targetX = targetY = 0; drawingSheep = false; });
 canvas.addEventListener('pointerdown', e => {
+  if (endingStartedAt) return;
   drawingSheep = true;
   lastSpawnX = e.clientX; lastSpawnY = e.clientY; lastSpawnAt = e.timeStamp;
   canvas.setPointerCapture(e.pointerId);
@@ -210,6 +284,7 @@ canvas.addEventListener('pointerup', e => {
   if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointercancel', () => { drawingSheep = false; });
+document.getElementById('dreamAgain').addEventListener('click', () => location.reload());
 resize();
 if (reduced) { spawnMeteor(width * .32, height * .25); }
 requestAnimationFrame(draw);
