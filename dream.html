@@ -103,40 +103,30 @@ function spawnMeteor(x = Math.random() * width * .65, y = Math.random() * height
   meteors.push({ x: x - 120, y: y - 60, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0, max: .72 + Math.random() * .42, length: 90 + Math.random() * 150 });
 }
 
-function drawDreamVortex(now) {
-  const maxRadius = Math.hypot(width, height) * .44;
-  const centerX = width * .5 + pointerX * 7;
-  const centerY = height * .52 + pointerY * 5;
-  ctx.save();
-  ctx.translate(centerX, centerY);
-  ctx.rotate((reduced ? 0 : now) * -.000022);
-  ctx.scale(1, .72);
-  ctx.globalCompositeOperation = 'screen';
-  ctx.lineCap = 'round';
-  ctx.shadowColor = 'rgba(92,142,231,.2)';
-  ctx.shadowBlur = 28;
-  for (let arm = 0; arm < 5; arm++) {
-    ctx.beginPath();
-    for (let i = 0; i <= 90; i++) {
-      const progress = i / 90;
-      const radius = 12 + progress * maxRadius;
-      const angle = progress * Math.PI * 4.1 + arm * Math.PI * 2 / 5;
-      const x = Math.cos(angle) * radius;
-      const y = Math.sin(angle) * radius;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.strokeStyle = `rgba(${74 + arm * 7},${112 + arm * 8},${188 + arm * 9},${.035 + arm * .004})`;
-    ctx.lineWidth = 18 + arm * 2;
-    ctx.stroke();
-  }
-  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.min(width, height) * .25);
-  glow.addColorStop(0, 'rgba(116,164,248,.07)');
-  glow.addColorStop(1, 'rgba(27,60,124,0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(0, 0, Math.min(width, height) * .25, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+function vortexWarpPoint(x, y, now, strength = 1) {
+  const centerX = width * .5 + pointerX * 10;
+  const centerY = height * .52 + pointerY * 7;
+  const nx = (x - centerX) / Math.max(width, 1);
+  const ny = (y - centerY) / Math.max(height, 1);
+  const radius2 = nx * nx + ny * ny;
+  const radius = Math.sqrt(radius2);
+  const time = reduced ? 0 : now / 1000;
+  const phase = time * 2.2 + radius2 * 18;
+  const waveX = Math.cos(phase - 2.094395) * width * .018 * strength;
+  const waveY = -Math.cos(phase - 4.18879) * height * .018 * strength;
+  const warpedX = x + waveX;
+  const warpedY = y + waveY;
+  const dx = warpedX - centerX;
+  const dy = (warpedY - centerY) * 1.18;
+  const angle = Math.atan2(dy, dx);
+  const distance = Math.hypot(dx, dy);
+  const falloff = Math.exp(-radius * 3.2);
+  const twist = (falloff * .72 + Math.sin(phase) * .045) * strength + time * .025 * falloff * strength;
+  const pulse = 1 + Math.sin(time * 1.7 + distance * .026) * .012 * strength;
+  return {
+    x: centerX + Math.cos(angle + twist) * distance * pulse,
+    y: centerY + Math.sin(angle + twist) * distance * pulse / 1.18
+  };
 }
 
 function paintSheep(x, y, scale, facing, frame, alpha = 1, glow = 12) {
@@ -278,10 +268,12 @@ function updateAndDrawSheep(now, dt) {
     const drawY = sheep.y - hop + pointerY * 5 * depth;
     const spawnProgress = sheep.hatching ? Math.min(1, age / .48) : 1;
     const spawnBounce = sheep.hatching && spawnProgress < 1 ? Math.sin(spawnProgress * Math.PI) * 30 : 0;
-    if (dumplingProgress < 1) paintSheep(drawX, drawY - spawnBounce, scale, facing, frame, appear * (1 - dumplingProgress), 9 + depth * 10);
+    const sheepPoint = vortexWarpPoint(drawX, drawY - spawnBounce, now, .22);
+    if (dumplingProgress < 1) paintSheep(sheepPoint.x, sheepPoint.y, scale, facing, frame, appear * (1 - dumplingProgress), 9 + depth * 10);
     if (dumplingProgress > 0) {
       const dumplingBounce = Math.abs(Math.sin(age * sheep.hopSpeed * animationSpeedMultiplier + sheep.phase)) * (10 + depth * 12);
-      paintDumpling(drawX, sheep.y - dumplingBounce + pointerY * 5 * depth, scale, facing, appear * dumplingProgress);
+      const dumplingPoint = vortexWarpPoint(drawX, sheep.y - dumplingBounce + pointerY * 5 * depth, now, .22);
+      paintDumpling(dumplingPoint.x, dumplingPoint.y, scale, facing, appear * dumplingProgress);
     }
   }
   ctx.imageSmoothingEnabled = true;
@@ -294,12 +286,12 @@ function draw(now) {
   pointerX += (targetX - pointerX) * (1 - Math.exp(-dt * 2.6));
   pointerY += (targetY - pointerY) * (1 - Math.exp(-dt * 2.6));
   ctx.clearRect(0, 0, width, height);
-  drawDreamVortex(now);
   for (const s of stars) {
     const twinkle = reduced ? 1 : .62 + .38 * Math.sin(now * .001 * s.speed + s.phase);
-    const x = s.x * width + pointerX * s.depth * 18;
-    const y = s.y * height + pointerY * s.depth * 12;
-    ctx.beginPath(); ctx.arc(x, y, s.r, 0, Math.PI * 2);
+    const baseX = s.x * width + pointerX * s.depth * 18;
+    const baseY = s.y * height + pointerY * s.depth * 12;
+    const warped = vortexWarpPoint(baseX, baseY, now, .72 + s.depth * .28);
+    ctx.beginPath(); ctx.arc(warped.x, warped.y, s.r, 0, Math.PI * 2);
     ctx.fillStyle = s.blue ? `rgba(151,199,255,${s.alpha * twinkle})` : `rgba(244,248,255,${s.alpha * twinkle})`;
     ctx.shadowColor = s.blue ? '#77aefc' : '#e9f3ff'; ctx.shadowBlur = s.r > 1.2 ? 8 : 2; ctx.fill();
   }
@@ -315,9 +307,11 @@ function draw(now) {
     const m = meteors[i]; m.life += dt; m.x += m.vx * dt; m.y += m.vy * dt;
     const alpha = Math.sin(Math.min(1, m.life / m.max) * Math.PI);
     const lenScale = m.length / Math.hypot(m.vx, m.vy);
-    const grad = ctx.createLinearGradient(m.x, m.y, m.x - m.vx * lenScale, m.y - m.vy * lenScale);
+    const head = vortexWarpPoint(m.x, m.y, now, .72);
+    const tail = vortexWarpPoint(m.x - m.vx * lenScale, m.y - m.vy * lenScale, now, .72);
+    const grad = ctx.createLinearGradient(head.x, head.y, tail.x, tail.y);
     grad.addColorStop(0, `rgba(255,255,255,${alpha})`); grad.addColorStop(.16, `rgba(163,205,255,${alpha * .8})`); grad.addColorStop(1, 'rgba(83,130,216,0)');
-    ctx.strokeStyle = grad; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - m.vx * lenScale, m.y - m.vy * lenScale); ctx.stroke();
+    ctx.strokeStyle = grad; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(head.x, head.y); ctx.lineTo(tail.x, tail.y); ctx.stroke();
     if (m.life > m.max) meteors.splice(i, 1);
   }
   if (!reduced) {
