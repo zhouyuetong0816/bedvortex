@@ -38,10 +38,10 @@
 </style>
 </head>
 <body>
-<canvas id="stars" aria-label="深蓝色闪烁星空，许多像素小羊在画面中自由跳跃，点击或拖动可以召唤新的小羊"></canvas>
+<canvas id="stars" aria-label="深蓝色闪烁星空，像素水饺蹦出来变成小羊，并在画面中自由跳跃"></canvas>
 <div class="veil"></div>
 <header><h1>梦境深处<span>Beyond the vortex</span></h1><div class="wish">困意 <span id="sleepiness">0%</span></div></header>
-<div class="hint" id="hint">召唤 30 只小羊 · 点击或按住拖动</div>
+<div class="hint" id="hint">点击或拖动 · 让水饺蹦出来变成小羊</div>
 <a class="back" href="index.html">← 返回漩涡</a>
 <div class="arrival"></div>
 <div class="ending" id="ending" aria-hidden="true">
@@ -69,6 +69,7 @@ const sleepGoal = 30;
 const stars = [], meteors = [], flock = [];
 const sheepImage = new Image();
 sheepImage.src = 'sheep.png';
+const dumplingSprite = createDumplingSprite();
 const initialSheepCount = 18;
 
 function resize() {
@@ -113,32 +114,46 @@ function paintSheep(x, y, scale, facing, frame, alpha = 1, glow = 12) {
   ctx.restore();
 }
 
+function createDumplingSprite() {
+  const rows = [
+    '.........##.##.........',
+    '.......##..#..##.......',
+    '......#..#.#.#..#......',
+    '.....##############.....',
+    '...##oooooooooooooo##...',
+    '..##oooooooooooooooo##..',
+    '.##oooooooooooooooooo##.',
+    '.#oooooooooooooooooooo#.',
+    '.#oooooooooooooooooooo#.',
+    '..#oooooooooooooooooo#..',
+    '...#oooooooooooooooo#...',
+    '....##oooooooooooo##....',
+    '......############......'
+  ];
+  const sprite = document.createElement('canvas');
+  sprite.width = Math.max(...rows.map(row => row.length));
+  sprite.height = rows.length;
+  const pixels = sprite.getContext('2d');
+  rows.forEach((row, y) => {
+    const offset = Math.floor((sprite.width - row.length) / 2);
+    [...row].forEach((pixel, x) => {
+      if (pixel === '.') return;
+      pixels.fillStyle = pixel === '#' ? '#111a2d' : (y > 8 ? '#e6d9ba' : '#fff7df');
+      pixels.fillRect(offset + x, y, 1, 1);
+    });
+  });
+  return sprite;
+}
+
 function paintDumpling(x, y, scale, facing, alpha = 1) {
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(facing * scale, scale);
   ctx.globalAlpha = alpha;
   ctx.shadowColor = 'rgba(135,187,255,.82)';
-  ctx.shadowBlur = 15;
-  ctx.beginPath();
-  ctx.moveTo(-18, 2);
-  ctx.bezierCurveTo(-15, -13, 15, -13, 18, 2);
-  ctx.bezierCurveTo(13, 15, -13, 15, -18, 2);
-  ctx.closePath();
-  ctx.fillStyle = '#fff7df';
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.strokeStyle = '#17233e';
-  ctx.lineWidth = 1.4;
-  ctx.stroke();
-  ctx.beginPath();
-  for (let i = -10; i <= 10; i += 5) {
-    ctx.moveTo(i, -7 + Math.abs(i) * .12);
-    ctx.quadraticCurveTo(i * .72, -2, i * .62, 2);
-  }
-  ctx.strokeStyle = 'rgba(54,71,105,.72)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  ctx.shadowBlur = 10;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(dumplingSprite, -20, -16, 40, 32);
   ctx.restore();
 }
 
@@ -163,6 +178,7 @@ function spawnSheep(x, y, settled = false) {
     phase: Math.random() * Math.PI * 2,
     hopSpeed: 6.5 + Math.random() * 4.5,
     size: .88 + Math.random() * .3,
+    hatching: !settled,
     born: performance.now() - (settled ? 1000 : 0)
   });
   if (flock.length > 75) flock.shift();
@@ -176,7 +192,7 @@ function spawnSheep(x, y, settled = false) {
 function updateAndDrawSheep(now, dt) {
   if (!sheepImage.complete || !sheepImage.naturalWidth) return;
   const endingProgress = endingStartedAt ? Math.min(1, (now - endingStartedAt) / 2600) : 0;
-  const worldSpeed = movementSpeedMultiplier * (1 - endingProgress * .9);
+  const worldSpeed = movementSpeedMultiplier * (1 - endingProgress * .35);
   for (const sheep of flock) {
     if (!reduced) {
       sheep.turnIn -= dt * worldSpeed;
@@ -207,14 +223,19 @@ function updateAndDrawSheep(now, dt) {
     const appear = Math.min(1, age / .2);
     const pop = 1 + Math.sin(appear * Math.PI) * .3;
     const depth = Math.max(0, Math.min(1, sheep.y / height));
-    const hop = reduced ? 0 : Math.abs(Math.sin(age * sheep.hopSpeed * animationSpeedMultiplier + sheep.phase)) * (12 + depth * 14) * (1 - endingProgress);
+    const hop = reduced ? 0 : Math.abs(Math.sin(age * sheep.hopSpeed * animationSpeedMultiplier + sheep.phase)) * (12 + depth * 14) * (1 - endingProgress * .2);
     const responsive = Math.max(.7, Math.min(1.15, Math.min(width / 1100, height / 680)));
     const scale = responsive * sheep.size * sheepSizeMultiplier * (1.65 + depth * .85) * appear * pop;
     const facing = Math.cos(sheep.angle) >= 0 ? 1 : -1;
     const frame = Math.floor(now * .012 * animationSpeedMultiplier + sheep.phase * 1.8) % 6;
     const drawX = sheep.x + pointerX * 8 * depth;
     const drawY = sheep.y - hop + pointerY * 5 * depth;
-    if (endingProgress < 1) paintSheep(drawX, drawY, scale, facing, frame, appear * (1 - endingProgress), 9 + depth * 10);
+    const hatchProgress = sheep.hatching ? Math.min(1, age / .72) : 1;
+    const hatchBounce = sheep.hatching && hatchProgress < 1 ? Math.sin(hatchProgress * Math.PI) * 34 : 0;
+    const sheepReveal = sheep.hatching ? Math.max(0, Math.min(1, (hatchProgress - .38) / .42)) : 1;
+    const dumplingReveal = sheep.hatching ? 1 - Math.max(0, Math.min(1, (hatchProgress - .28) / .5)) : 0;
+    if (endingProgress < 1 && sheepReveal > 0) paintSheep(drawX, drawY - hatchBounce, scale, facing, frame, appear * sheepReveal * (1 - endingProgress), 9 + depth * 10);
+    if (!endingStartedAt && dumplingReveal > 0) paintDumpling(drawX, drawY - hatchBounce, scale * (1 + Math.sin(hatchProgress * Math.PI) * .22), facing, appear * dumplingReveal);
     if (endingProgress > 0) paintDumpling(drawX, drawY, scale * .92, facing, appear * endingProgress);
   }
   ctx.imageSmoothingEnabled = true;
