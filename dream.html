@@ -30,10 +30,10 @@
 </style>
 </head>
 <body>
-<canvas id="stars" aria-label="深蓝色闪烁星空，许多像素小羊顺时针跳跃，点击可以召唤新的小羊"></canvas>
+<canvas id="stars" aria-label="深蓝色闪烁星空，许多像素小羊在画面中自由跳跃，点击或拖动可以召唤新的小羊"></canvas>
 <div class="veil"></div>
-<header><h1>梦境深处<span>Beyond the vortex</span></h1><div class="wish">小羊 <span id="sheepTotal">16</span></div></header>
-<div class="hint">移动视角 · 点击任意位置跳出小羊 · 羊群顺时针跳跃</div>
+<header><h1>梦境深处<span>Beyond the vortex</span></h1><div class="wish">小羊 <span id="sheepTotal">18</span></div></header>
+<div class="hint">移动视角 · 点击召唤小羊 · 按住拖动连续产生羊群</div>
 <a class="back" href="index.html">← 返回漩涡</a>
 <div class="arrival"></div>
 <script>
@@ -43,10 +43,11 @@ const sheepTotal = document.getElementById('sheepTotal');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let width = 1, height = 1, dpr = 1, last = performance.now(), nextMeteor = 1.4;
 let pointerX = 0, pointerY = 0, targetX = 0, targetY = 0;
-const stars = [], meteors = [], summonedSheep = [];
+let drawingSheep = false, lastSpawnAt = 0, lastSpawnX = 0, lastSpawnY = 0;
+const stars = [], meteors = [], flock = [];
 const sheepImage = new Image();
 sheepImage.src = 'sheep.png';
-const orbitSheepCount = 16;
+const initialSheepCount = 18;
 
 function resize() {
   dpr = Math.min(devicePixelRatio || 1, 2);
@@ -62,6 +63,15 @@ function resize() {
     speed: .45 + Math.random() * 1.7, depth: .2 + Math.random() * .8,
     blue: Math.random() < .24
   });
+  for (const sheep of flock) {
+    sheep.x = Math.max(42, Math.min(width - 42, sheep.x));
+    sheep.y = Math.max(54, Math.min(height - 42, sheep.y));
+  }
+  if (!flock.length) {
+    for (let i = 0; i < initialSheepCount; i++) {
+      spawnSheep(55 + Math.random() * Math.max(1, width - 110), 80 + Math.random() * Math.max(1, height - 150), true);
+    }
+  }
 }
 
 function spawnMeteor(x = Math.random() * width * .65, y = Math.random() * height * .42) {
@@ -81,36 +91,61 @@ function paintSheep(x, y, scale, facing, frame, alpha = 1, glow = 12) {
   ctx.restore();
 }
 
-function drawSheep(now) {
+function spawnSheep(x, y, settled = false) {
+  const angle = Math.random() * Math.PI * 2;
+  flock.push({
+    x, y,
+    angle,
+    targetAngle: angle,
+    speed: 32 + Math.random() * 48,
+    turnIn: .25 + Math.random() * 1.4,
+    phase: Math.random() * Math.PI * 2,
+    hopSpeed: 6.5 + Math.random() * 4.5,
+    size: .88 + Math.random() * .3,
+    born: performance.now() - (settled ? 1000 : 0)
+  });
+  if (flock.length > 75) flock.shift();
+  sheepTotal.textContent = flock.length;
+}
+
+function updateAndDrawSheep(now, dt) {
   if (!sheepImage.complete || !sheepImage.naturalWidth) return;
-  const orbitX = Math.min(width * .38, 510);
-  const orbitY = Math.min(height * .28, 245);
-  const centerX = width * .5 + pointerX * 14;
-  const centerY = height * .55 + pointerY * 8;
-  const flock = [];
-  for (let i = 0; i < orbitSheepCount; i++) {
-    const angle = now * .00042 + i * Math.PI * 2 / orbitSheepCount;
-    flock.push({ angle, depth: (Math.sin(angle) + 1) * .5, phase: i * 1.7 });
+  for (const sheep of flock) {
+    if (!reduced) {
+      sheep.turnIn -= dt;
+      if (sheep.turnIn <= 0) {
+        sheep.targetAngle += (Math.random() - .5) * 2.8;
+        sheep.speed = 32 + Math.random() * 55;
+        sheep.turnIn = .3 + Math.random() * 1.65;
+      }
+      const turn = Math.atan2(Math.sin(sheep.targetAngle - sheep.angle), Math.cos(sheep.targetAngle - sheep.angle));
+      sheep.angle += turn * Math.min(1, dt * 2.4);
+      sheep.x += Math.cos(sheep.angle) * sheep.speed * dt;
+      sheep.y += Math.sin(sheep.angle) * sheep.speed * .62 * dt;
+      const marginX = 42, top = 56, bottom = 38;
+      if (sheep.x < marginX || sheep.x > width - marginX) {
+        sheep.x = Math.max(marginX, Math.min(width - marginX, sheep.x));
+        sheep.angle = sheep.targetAngle = Math.PI - sheep.angle + (Math.random() - .5) * .45;
+      }
+      if (sheep.y < top || sheep.y > height - bottom) {
+        sheep.y = Math.max(top, Math.min(height - bottom, sheep.y));
+        sheep.angle = sheep.targetAngle = -sheep.angle + (Math.random() - .5) * .45;
+      }
+    }
   }
-  flock.sort((a, b) => a.depth - b.depth);
-  const frame = Math.floor(now * .012) % 6;
+  flock.sort((a, b) => a.y - b.y);
   ctx.imageSmoothingEnabled = false;
   for (const sheep of flock) {
-    const x = centerX + Math.cos(sheep.angle) * orbitX;
-    const hop = reduced ? 0 : Math.abs(Math.sin(now * .011 + sheep.phase)) * (11 + sheep.depth * 15);
-    const y = centerY + Math.sin(sheep.angle) * orbitY - hop;
-    const responsive = Math.max(.7, Math.min(1.15, Math.min(width / 1100, height / 680)));
-    const scale = responsive * (1.85 + sheep.depth * 1.05);
-    const facing = Math.sin(sheep.angle) > 0 ? -1 : 1;
-    paintSheep(x, y, scale, facing, frame, .72 + sheep.depth * .28, 9 + sheep.depth * 12);
-  }
-  for (const sheep of summonedSheep) {
     const age = (now - sheep.born) / 1000;
-    const appear = Math.min(1, age / .22);
-    const pop = 1 + Math.sin(appear * Math.PI) * .28;
-    const hop = reduced ? 0 : Math.abs(Math.sin(age * 8.5 + sheep.phase)) * 18;
-    const facing = Math.sin(age * 2.4 + sheep.phase) > 0 ? 1 : -1;
-    paintSheep(sheep.x, sheep.y - hop, sheep.scale * appear * pop, facing, frame, appear, 16);
+    const appear = Math.min(1, age / .2);
+    const pop = 1 + Math.sin(appear * Math.PI) * .3;
+    const depth = Math.max(0, Math.min(1, sheep.y / height));
+    const hop = reduced ? 0 : Math.abs(Math.sin(age * sheep.hopSpeed + sheep.phase)) * (12 + depth * 14);
+    const responsive = Math.max(.7, Math.min(1.15, Math.min(width / 1100, height / 680)));
+    const scale = responsive * sheep.size * (1.65 + depth * .85) * appear * pop;
+    const facing = Math.cos(sheep.angle) >= 0 ? 1 : -1;
+    const frame = Math.floor(now * .012 + sheep.phase * 1.8) % 6;
+    paintSheep(sheep.x + pointerX * 8 * depth, sheep.y - hop + pointerY * 5 * depth, scale, facing, frame, appear, 9 + depth * 10);
   }
   ctx.imageSmoothingEnabled = true;
   ctx.globalAlpha = 1;
@@ -131,7 +166,7 @@ function draw(now) {
     ctx.shadowColor = s.blue ? '#77aefc' : '#e9f3ff'; ctx.shadowBlur = s.r > 1.2 ? 8 : 2; ctx.fill();
   }
   ctx.shadowBlur = 0;
-  drawSheep(now);
+  updateAndDrawSheep(now, dt);
   for (let i = meteors.length - 1; i >= 0; i--) {
     const m = meteors[i]; m.life += dt; m.x += m.vx * dt; m.y += m.vy * dt;
     const alpha = Math.sin(Math.min(1, m.life / m.max) * Math.PI);
@@ -149,19 +184,29 @@ function draw(now) {
 }
 
 addEventListener('resize', resize);
-canvas.addEventListener('pointermove', e => { targetX = e.clientX / width - .5; targetY = e.clientY / height - .5; });
-canvas.addEventListener('pointerleave', () => { targetX = targetY = 0; });
-canvas.addEventListener('pointerdown', e => {
-  summonedSheep.push({
-    x: e.clientX,
-    y: e.clientY,
-    born: performance.now(),
-    phase: Math.random() * Math.PI * 2,
-    scale: 2.15 + Math.random() * .45
-  });
-  if (summonedSheep.length > 40) summonedSheep.shift();
-  sheepTotal.textContent = orbitSheepCount + summonedSheep.length;
+canvas.addEventListener('pointermove', e => {
+  targetX = e.clientX / width - .5;
+  targetY = e.clientY / height - .5;
+  if (drawingSheep) {
+    const distance = Math.hypot(e.clientX - lastSpawnX, e.clientY - lastSpawnY);
+    if (distance > 24 || e.timeStamp - lastSpawnAt > 75) {
+      spawnSheep(e.clientX, e.clientY);
+      lastSpawnX = e.clientX; lastSpawnY = e.clientY; lastSpawnAt = e.timeStamp;
+    }
+  }
 });
+canvas.addEventListener('pointerleave', () => { targetX = targetY = 0; drawingSheep = false; });
+canvas.addEventListener('pointerdown', e => {
+  drawingSheep = true;
+  lastSpawnX = e.clientX; lastSpawnY = e.clientY; lastSpawnAt = e.timeStamp;
+  canvas.setPointerCapture(e.pointerId);
+  spawnSheep(e.clientX, e.clientY);
+});
+canvas.addEventListener('pointerup', e => {
+  drawingSheep = false;
+  if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointercancel', () => { drawingSheep = false; });
 resize();
 if (reduced) { spawnMeteor(width * .32, height * .25); }
 requestAnimationFrame(draw);
