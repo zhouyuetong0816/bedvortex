@@ -23,9 +23,14 @@
   .hint { position: fixed; z-index: 2; left: 50%; bottom: 28px; transform: translateX(-50%); color: rgba(224,237,255,.7); font-size: 12px; white-space: nowrap; pointer-events: none; text-shadow: 0 2px 12px #000; }
   .back { position: fixed; z-index: 3; left: 26px; bottom: 24px; color: #eaf2ff; text-decoration: none; font-size: 12px; padding: 9px 14px; border: 1px solid rgba(206,225,255,.28); border-radius: 999px; background: rgba(3,10,27,.28); backdrop-filter: blur(9px); }
   .back:hover, .back:focus-visible { background: rgba(91,135,214,.25); border-color: rgba(222,235,255,.65); outline: none; }
+  .controls { position: fixed; z-index: 4; right: 24px; bottom: 22px; width: min(270px, calc(100vw - 36px)); padding: 13px 15px 14px; border: 1px solid rgba(196,218,255,.24); border-radius: 16px; background: rgba(3,10,27,.56); box-shadow: 0 12px 42px rgba(0,0,0,.25); backdrop-filter: blur(12px); }
+  .control + .control { margin-top: 11px; }
+  .control label { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; color: rgba(232,241,255,.82); font-size: 11px; }
+  .control output { color: #a9ccff; }
+  .control input { display: block; width: 100%; accent-color: #8ebcff; cursor: ew-resize; }
   .arrival { position: fixed; inset: 0; z-index: 5; pointer-events: none; background: #020718; animation: arrive 1.8s ease-out forwards; }
   @keyframes arrive { to { opacity: 0; } }
-  @media (max-width: 600px) { header { inset: 18px; } .back { left: 18px; bottom: 18px; } .hint { bottom: 70px; } }
+  @media (max-width: 600px) { header { inset: 18px; } .back { left: 18px; bottom: 18px; } .hint { bottom: 145px; } .controls { right: 18px; bottom: 68px; } }
   @media (prefers-reduced-motion: reduce) { .arrival { animation-duration: .3s; } }
 </style>
 </head>
@@ -35,15 +40,24 @@
 <header><h1>梦境深处<span>Beyond the vortex</span></h1><div class="wish">小羊 <span id="sheepTotal">18</span></div></header>
 <div class="hint">移动视角 · 点击召唤小羊 · 按住拖动连续产生羊群</div>
 <a class="back" href="index.html">← 返回漩涡</a>
+<div class="controls" aria-label="小羊参数">
+  <div class="control"><label for="speedControl"><span>奔跑速度</span><output id="speedValue">1.6×</output></label><input id="speedControl" type="range" min="0.5" max="3.5" step="0.1" value="1.6"></div>
+  <div class="control"><label for="sizeControl"><span>小羊大小</span><output id="sizeValue">1.25×</output></label><input id="sizeControl" type="range" min="0.6" max="2.2" step="0.05" value="1.25"></div>
+</div>
 <div class="arrival"></div>
 <script>
 const canvas = document.getElementById('stars');
 const ctx = canvas.getContext('2d');
 const sheepTotal = document.getElementById('sheepTotal');
+const speedControl = document.getElementById('speedControl');
+const speedValue = document.getElementById('speedValue');
+const sizeControl = document.getElementById('sizeControl');
+const sizeValue = document.getElementById('sizeValue');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let width = 1, height = 1, dpr = 1, last = performance.now(), nextMeteor = 1.4;
 let pointerX = 0, pointerY = 0, targetX = 0, targetY = 0;
 let drawingSheep = false, lastSpawnAt = 0, lastSpawnX = 0, lastSpawnY = 0;
+let sheepSpeedMultiplier = Number(speedControl.value), sheepSizeMultiplier = Number(sizeControl.value);
 const stars = [], meteors = [], flock = [];
 const sheepImage = new Image();
 sheepImage.src = 'sheep.png';
@@ -112,16 +126,16 @@ function updateAndDrawSheep(now, dt) {
   if (!sheepImage.complete || !sheepImage.naturalWidth) return;
   for (const sheep of flock) {
     if (!reduced) {
-      sheep.turnIn -= dt;
+      sheep.turnIn -= dt * sheepSpeedMultiplier;
       if (sheep.turnIn <= 0) {
         sheep.targetAngle += (Math.random() - .5) * 2.8;
         sheep.speed = 32 + Math.random() * 55;
         sheep.turnIn = .3 + Math.random() * 1.65;
       }
       const turn = Math.atan2(Math.sin(sheep.targetAngle - sheep.angle), Math.cos(sheep.targetAngle - sheep.angle));
-      sheep.angle += turn * Math.min(1, dt * 2.4);
-      sheep.x += Math.cos(sheep.angle) * sheep.speed * dt;
-      sheep.y += Math.sin(sheep.angle) * sheep.speed * .62 * dt;
+      sheep.angle += turn * Math.min(1, dt * 2.4 * Math.sqrt(sheepSpeedMultiplier));
+      sheep.x += Math.cos(sheep.angle) * sheep.speed * dt * sheepSpeedMultiplier;
+      sheep.y += Math.sin(sheep.angle) * sheep.speed * .62 * dt * sheepSpeedMultiplier;
       const marginX = 42, top = 56, bottom = 38;
       if (sheep.x < marginX || sheep.x > width - marginX) {
         sheep.x = Math.max(marginX, Math.min(width - marginX, sheep.x));
@@ -140,11 +154,11 @@ function updateAndDrawSheep(now, dt) {
     const appear = Math.min(1, age / .2);
     const pop = 1 + Math.sin(appear * Math.PI) * .3;
     const depth = Math.max(0, Math.min(1, sheep.y / height));
-    const hop = reduced ? 0 : Math.abs(Math.sin(age * sheep.hopSpeed + sheep.phase)) * (12 + depth * 14);
+    const hop = reduced ? 0 : Math.abs(Math.sin(age * sheep.hopSpeed * sheepSpeedMultiplier + sheep.phase)) * (12 + depth * 14);
     const responsive = Math.max(.7, Math.min(1.15, Math.min(width / 1100, height / 680)));
-    const scale = responsive * sheep.size * (1.65 + depth * .85) * appear * pop;
+    const scale = responsive * sheep.size * sheepSizeMultiplier * (1.65 + depth * .85) * appear * pop;
     const facing = Math.cos(sheep.angle) >= 0 ? 1 : -1;
-    const frame = Math.floor(now * .012 + sheep.phase * 1.8) % 6;
+    const frame = Math.floor(now * .012 * sheepSpeedMultiplier + sheep.phase * 1.8) % 6;
     paintSheep(sheep.x + pointerX * 8 * depth, sheep.y - hop + pointerY * 5 * depth, scale, facing, frame, appear, 9 + depth * 10);
   }
   ctx.imageSmoothingEnabled = true;
@@ -207,6 +221,14 @@ canvas.addEventListener('pointerup', e => {
   if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointercancel', () => { drawingSheep = false; });
+speedControl.addEventListener('input', () => {
+  sheepSpeedMultiplier = Number(speedControl.value);
+  speedValue.textContent = sheepSpeedMultiplier.toFixed(1) + '×';
+});
+sizeControl.addEventListener('input', () => {
+  sheepSizeMultiplier = Number(sizeControl.value);
+  sizeValue.textContent = sheepSizeMultiplier.toFixed(2).replace(/0$/, '') + '×';
+});
 resize();
 if (reduced) { spawnMeteor(width * .32, height * .25); }
 requestAnimationFrame(draw);
