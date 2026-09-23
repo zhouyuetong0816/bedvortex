@@ -103,6 +103,42 @@ function spawnMeteor(x = Math.random() * width * .65, y = Math.random() * height
   meteors.push({ x: x - 120, y: y - 60, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0, max: .72 + Math.random() * .42, length: 90 + Math.random() * 150 });
 }
 
+function drawDreamVortex(now) {
+  const maxRadius = Math.hypot(width, height) * .44;
+  const centerX = width * .5 + pointerX * 7;
+  const centerY = height * .52 + pointerY * 5;
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  ctx.rotate((reduced ? 0 : now) * -.000022);
+  ctx.scale(1, .72);
+  ctx.globalCompositeOperation = 'screen';
+  ctx.lineCap = 'round';
+  ctx.shadowColor = 'rgba(92,142,231,.2)';
+  ctx.shadowBlur = 28;
+  for (let arm = 0; arm < 5; arm++) {
+    ctx.beginPath();
+    for (let i = 0; i <= 90; i++) {
+      const progress = i / 90;
+      const radius = 12 + progress * maxRadius;
+      const angle = progress * Math.PI * 4.1 + arm * Math.PI * 2 / 5;
+      const x = Math.cos(angle) * radius;
+      const y = Math.sin(angle) * radius;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = `rgba(${74 + arm * 7},${112 + arm * 8},${188 + arm * 9},${.035 + arm * .004})`;
+    ctx.lineWidth = 18 + arm * 2;
+    ctx.stroke();
+  }
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.min(width, height) * .25);
+  glow.addColorStop(0, 'rgba(116,164,248,.07)');
+  glow.addColorStop(1, 'rgba(27,60,124,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, Math.min(width, height) * .25, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 function paintSheep(x, y, scale, facing, frame, alpha = 1, glow = 12) {
   ctx.save();
   ctx.translate(x, y);
@@ -258,6 +294,7 @@ function draw(now) {
   pointerX += (targetX - pointerX) * (1 - Math.exp(-dt * 2.6));
   pointerY += (targetY - pointerY) * (1 - Math.exp(-dt * 2.6));
   ctx.clearRect(0, 0, width, height);
+  drawDreamVortex(now);
   for (const s of stars) {
     const twinkle = reduced ? 1 : .62 + .38 * Math.sin(now * .001 * s.speed + s.phase);
     const x = s.x * width + pointerX * s.depth * 18;

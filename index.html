@@ -22,8 +22,6 @@
     text-shadow: 0 1px 2px rgba(0,0,0,.8);
     user-select: none; pointer-events: none;
   }
-  #hud a { color: rgba(255,255,255,.9); }
-  #hud .title { font-size: 14px; font-weight: 700; letter-spacing: .5px; }
   #fps {
     position: absolute; right: 14px; top: 10px;
     color: rgba(255,255,255,.65); font-size: 12px;
@@ -135,16 +133,13 @@
 <canvas id="glcanvas"></canvas>
 
 <div id="hud">
-  <div class="title">BedVortex · 床与漩涡</div>
-  <div>基于 <a href="https://www.shadertoy.com/view/Msl3WM" target="_blank">NyanCatHypnotic</a> · <a href="flock.html">羊群版 →</a></div>
   <div>长按约 4 秒坠入梦境 · 拖动搅动漩涡 · 双指上下滑动推拉镜头 · 双击复位</div>
-  <div>视图 <span id="viewZoom">1.00×</span> · 空格 暂停 · R 重置 · F 全屏</div>
 </div>
 <div id="dreamStatus" style="position:absolute;top:24px;left:50%;transform:translateX(-50%);color:#fff;font:13px sans-serif;pointer-events:none;text-shadow:0 2px 8px #000"></div>
 <div id="fps"></div>
 <input type="file" id="bgFile" accept="image/*" hidden>
-<button id="panelToggle">⚙ 参数</button>
-<div id="panel">
+<button id="panelToggle" aria-expanded="false">⚙ 参数</button>
+<div id="panel" class="hidden">
   <div class="p-head"><span>参数</span><button id="panelReset">重置</button></div>
   <div id="panelBody"></div>
 </div>
@@ -258,13 +253,22 @@ const DEFAULTS = {
   bedSize: 1.1, bedSpin: 0.5, bedTilt: 0, bedBob: 0,
   bedTwist: 0, bedTwistSpd: 0.8, pillowFloat: 0.08, duvetFloat: 0.16,
   bedBend: 0.05, bedBendSpd: 0.4,
-  bgScale: 1, bgRot: 0, bgBright: 1, bgSat: 1,
+  bgScale: 1, bgRot: 0, bgBright: 1, bgSat: 0.45,
   palA: "#4a63e8", palB: "#7a52e8", palC: "#b04be8", palD: "#e84bc0",
-  palMode: 0, bgTint: 0.85,
+  palMode: 0, bgTint: 0.2,
   warpAmt: 0.05, warpSpd: 1, warpFreq: 15,
 };
 const params = { ...DEFAULTS };
-try { Object.assign(params, JSON.parse(localStorage.getItem("bedParams9") || "{}")); } catch (e) { /* 忽略损坏存档 */ }
+try {
+  const stored = JSON.parse(localStorage.getItem("bedParams9") || "{}");
+  if (stored.__defaultsVersion !== 2) {
+    stored.bgTint = DEFAULTS.bgTint;
+    stored.bgSat = DEFAULTS.bgSat;
+    stored.__defaultsVersion = 2;
+  }
+  Object.assign(params, stored);
+} catch (e) { /* 忽略损坏存档 */ }
+params.__defaultsVersion = 2;
 function saveParams() {
   try { localStorage.setItem("bedParams9", JSON.stringify(params)); } catch (e) { /* 隐私模式 */ }
 }
@@ -657,7 +661,6 @@ const orbit = { ...orbitHome, targetRadius: orbitHome.radius, vx: 0, vy: 0, drag
 const dream = { amount: 0, entry: 0, twist: 0, energy: 0, phase: 0, committed: false };
 const dreamStatus = document.getElementById("dreamStatus");
 const dreamTransition = document.getElementById("dreamTransition");
-const zoomLabel = document.getElementById("viewZoom");
 const clampPitch = value => Math.max(0.12, Math.min(1.42, value));
 function endOrbitDrag(e = {}) {
   if (!orbit.drag || (e.pointerId !== undefined && e.pointerId !== orbit.drag.id)) return;
@@ -760,7 +763,6 @@ function updateCamera(now) {
   const horizontal = Math.cos(orbit.pitch) * viewRadius;
   camera.position.set(Math.sin(orbit.yaw) * horizontal, -0.2 + Math.sin(orbit.pitch) * viewRadius, Math.cos(orbit.yaw) * horizontal);
   camera.lookAt(0, -0.2, 0);
-  zoomLabel.textContent = (orbitHome.radius / viewRadius).toFixed(2) + "×";
 }
 
 // ---------- 面板 ----------
@@ -895,7 +897,11 @@ document.getElementById("panelReset").addEventListener("click", () => {
 });
 
 const panel = document.getElementById("panel");
-document.getElementById("panelToggle").addEventListener("click", () => panel.classList.toggle("hidden"));
+const panelToggle = document.getElementById("panelToggle");
+panelToggle.addEventListener("click", () => {
+  const closed = panel.classList.toggle("hidden");
+  panelToggle.setAttribute("aria-expanded", String(!closed));
+});
 
 // ---------- 渲染循环 ----------
 function applyParams() {
